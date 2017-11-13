@@ -5,7 +5,7 @@
 #define CS         18    // white
 bool doMatrix = false;
 bool doLED = false;
-
+bool doStart = false;
 void ofApp::onCharacterReceived(KeyListenerEventData& e)
 {
     keyPressed((int)e.character);
@@ -18,101 +18,119 @@ void ofApp::setup(){
     ofHideCursor();
     ledMatrix = NULL;
     wiringPiSetupGpio();
+    ledMatrix = new LEDMatrix();
     
+    vector<uint8_t>csPins;
+    csPins.push_back(18);
+    csPins.push_back(12);
+
+    ledMatrix->setup(24, 25, csPins);
+    ledMatrix->begin(HT1632_COMMON_16NMOS);
+    
+    ledMatrix->setTextSize(1);    // size 1 == 8 pixels high
+    ledMatrix->setTextColor(1);   // 'lit' LEDs
     
 }
 
 //--------------------------------------------------------------
 void ofApp::update(){
-    if(doLED)
-    {
-        doLED = false;
-        blink();
-    }else
-    {
-        if(doMatrix)
-        {
-            doMatrix = false;
-            if(!ledMatrix)
-            {
-                ledMatrix = new HT1632LEDMatrix();
-                ledMatrix->setup(24, 25, 18);
-                ledMatrix->begin(HT1632_COMMON_16NMOS);
-                ledMatrix->clearScreen();
-                ofSleepMillis(2000);
 
-                ledMatrix->fillScreen();
-                ofSleepMillis(2000);
-
-                ledMatrix->writeScreen();
-                ofSleepMillis(2000);
-
-                ledMatrix->clearScreen();
-
-            }
-            /*
-            ledMatrix->setTextSize(1);    // size 1 == 8 pixels high
-            ledMatrix->setTextColor(1);   // 'lit' LEDs
-            
-            ledMatrix->setCursor(0, 0);   // start at top left, with one pixel of spacing
-            ledMatrix->print("PLAY");
-            ledMatrix->writeScreen();
-            
-            int i = 0;
-            for (i = 0; i < 4; ++i) {
-                ofSleepMillis(500);
-                
-                ledMatrix->clearScreen();
-                ledMatrix->setCursor(0, 0);   // start at top left, with one pixel of spacing
-                ledMatrix->print("PLAY");
-                ledMatrix->setCursor(0, 8);   // next line, 8 pixels down
-                ledMatrix->print("PONG");
-                ledMatrix->writeScreen();
-                
-                ofSleepMillis(500);
-                
-                
-                ledMatrix->clearScreen();
-                ledMatrix->setCursor(0, 0);   // start at top left, with one pixel of spacing
-                ledMatrix->print("PLAY");
-                ledMatrix->writeScreen();
-            }
-            
-            ofSleepMillis(500);
-            
-            
-            ledMatrix->clearScreen();
-            ledMatrix->setCursor(0, 0);   // start at top left, with one pixel of spacing
-            ledMatrix->print("PLAY");
-            ledMatrix->setCursor(0, 8);   // next line, 8 pixels down
-            ledMatrix->print("PONG");
-            ledMatrix->writeScreen();
-            */
-            ofLog() << "didIntro";
-            
-            
-        }
-        
-    }
 }
-void ofApp::blink()
-{
-    ofLog() << "blink";
-    
-    pinMode (0, OUTPUT) ;
-    for (int i=0; i<100; i++)
-    {
-        digitalWrite (0, HIGH); 
-        delay (500) ;
-        digitalWrite (0,  LOW);
-        delay (500);
-    }
-}
+
+string displayString="0";
 //--------------------------------------------------------------
 void ofApp::draw(){
-   
+    
+    
+    stringstream info;
+    info << "width: " << (int)ledMatrix->width << endl;
+    info << "height: " << (int)ledMatrix->height << endl;
+    
+    ofDrawBitmapStringHighlight(info.str(), 100, 100);
+    
+    if(doStart)
+    {
+        doStart = false;
+        loop();
+    }
+        
 }
 
+void ofApp::loop() 
+{
+    
+    ledMatrix->fillScreen();
+    ledMatrix->writeScreen();
+    ofSleepMillis(500);
+    
+    // blink!
+    ledMatrix->blink(true);
+    ofSleepMillis(2000);
+    ledMatrix->blink(false);
+    
+    // Adjust the brightness down
+    for (int8_t i=15; i>=0; i--) 
+    {
+        ledMatrix->setBrightness(i);
+        ofSleepMillis(100);
+    }
+    // then back up
+    for (uint8_t i=0; i<16; i++) 
+    {
+        ledMatrix->setBrightness(i);
+        ofSleepMillis(100);
+    }
+    
+    for (uint8_t y=0; y<ledMatrix->height; y++)
+    {
+        for (uint8_t x=0; x< ledMatrix->width; x++) 
+        {
+            ledMatrix->clrPixel(x, y);
+            ledMatrix->writeScreen();
+        }
+    }
+    
+	return;
+    
+    for(uint8_t i=0; i<4; i++) 
+    {
+        //ledMatrix->setRotation(i);
+        ledMatrix->clearScreen();
+        ledMatrix->setCursor(0, 0);
+        
+        for (uint8_t y=0; y<ledMatrix->height; y++) 
+        {
+            for (uint8_t x=0; x< ledMatrix->width; x++) 
+            {
+                ofSleepMillis(100);
+                ledMatrix->setPixel(x, y);
+                ledMatrix->writeScreen();
+
+            }
+        }
+    
+        
+
+      
+        
+        for (uint8_t y=0; y<ledMatrix->height; y++)
+        {
+            for (uint8_t x=0; x< ledMatrix->width; x++) 
+            {
+                ledMatrix->clrPixel(x, y);
+                ledMatrix->writeScreen();
+            }
+        }
+    }
+}
+
+void ofApp::exit()
+{
+    
+
+
+    
+}
 //--------------------------------------------------------------
 void ofApp::keyPressed(int key){
     ofLog(OF_LOG_VERBOSE, "%c keyPressed", key);
@@ -131,6 +149,11 @@ void ofApp::keyPressed(int key){
             doLED = false;
             break;
 
+        }
+        case '0':
+        {
+            doStart = true;
+            
         }
         default:
         {

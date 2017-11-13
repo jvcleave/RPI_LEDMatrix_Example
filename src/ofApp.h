@@ -1,7 +1,7 @@
 #pragma once
 
 #include "ofMain.h"
-#include "HT1632.h"
+#include "LEDPanel.h"
 #include "TerminalListener.h"
 
 class ofApp : public ofBaseApp, public KeyListener{
@@ -21,11 +21,12 @@ class ofApp : public ofBaseApp, public KeyListener{
 		void windowResized(int w, int h);
 		void dragEvent(ofDragInfo dragInfo);
 		void gotMessage(ofMessage msg);
-    
-    HT1632LEDMatrix* ledMatrix;
+        void exit();
+
+    LEDMatrix* ledMatrix;
     //allows key commands via Shell
     void onCharacterReceived(KeyListenerEventData& e);
     TerminalListener consoleListener;
     
-    void blink();
+    void loop();
 };
