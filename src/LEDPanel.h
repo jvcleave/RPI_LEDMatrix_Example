@@ -25,7 +25,6 @@
 
 
 #define _BV(bit) (1 << (bit))
-typedef char boolean;
 
 static unsigned char  font[] = {
     0x00, 0x00, 0x00, 0x00, 0x00,   
@@ -284,6 +283,7 @@ static unsigned char  font[] = {
     0x00, 0x3C, 0x3C, 0x3C, 0x3C, 
     0x00, 0x00, 0x00, 0x00, 0x00, 
 };
+#define _swap_int16_t(a, b) { int16_t t = a; a = b; b = t; }
 
 class LEDPanel
 {
@@ -295,12 +295,18 @@ public:
     int8_t cs;
     int8_t wr;
     int8_t rd;
-    uint8_t ledmatrix[48];     // 16 * 24 / 8
-    
+    vector<uint8_t>leds;
+    int matrixSize;
     LEDPanel() 
     {
         width = 24;
         height = 16;
+        
+        matrixSize = width*height/8;
+        for (int i=0; i<matrixSize; i++) 
+        {
+            leds.push_back(0);
+        }
     }
     void setup(int8_t data_, int8_t wr_, int8_t cs_, int8_t rd_=-1) 
     {
@@ -309,10 +315,6 @@ public:
         cs = cs_;
         rd = rd_;
         
-        for (uint8_t i=0; i<48; i++) 
-        {
-            ledmatrix[i] = 0;
-        }
     }
     
     void begin(uint8_t type) 
@@ -349,32 +351,36 @@ public:
         sendcommand(HT1632_PWM_CONTROL | pwm);
     }
     
-    void blink(boolean blinky) 
+    void blink(bool doBlink) 
     {
-        if (blinky) 
+        if (doBlink) 
+        {
             sendcommand(HT1632_BLINK_ON);
+        }
         else
+        {
             sendcommand(HT1632_BLINK_OFF);
+        }
     }
     
     void setPixel(uint16_t i) 
     {
-        ledmatrix[i/8] |= _BV(i%8); 
+        leds[i/8] |= (1 << (i & 7)); 
     }
     
     void clrPixel(uint16_t i) 
     {
-        ledmatrix[i/8] &= ~_BV(i%8); 
+        leds[i/8] &= ~(1 << (i & 7));
     }
     
     void dumpScreen() 
     {
         printf("---------------------------------------\n");
         
-        for (uint16_t i=0; i<(width*height/8); i++) 
+        for (int i=0; i<matrixSize; i++) 
         {
             printf("0x");
-            printf("0x%08x", ledmatrix[i]);
+            printf("0x%08x", leds[i]);
             printf(" ");
             if (i % 3 == 2) printf("\n");
         }
@@ -392,13 +398,9 @@ public:
         // send with address 0
         writedata(0, 7);
         
-        for (uint16_t i=0; i<(width*height/8); i+=2) 
+        for (int i=0; i<matrixSize; i+=2) 
         {
-            uint16_t d = ledmatrix[i];
-            d <<= 8;
-            d |= ledmatrix[i+1];
-            
-            writedata(d, 16);
+           writedata(((uint16_t)leds[i] << 8) | leds[i+1], 16);
         }
         digitalWrite(cs, HIGH);
     }
@@ -406,36 +408,30 @@ public:
     
     void clearScreen()
     {
-        for (uint8_t i=0; i<(width*height/8); i++)
+        for (size_t i=0; i<leds.size(); i++)
         {
-            ledmatrix[i] = 0;
+            leds[i] = 0;
         }
         writeScreen();
     }
     
     
-    void writedata(uint16_t d, uint8_t bits) {
+    void writedata(uint16_t d, uint8_t bits) 
+    {
         pinMode(data, OUTPUT);
-        for (uint8_t i=bits; i > 0; i--) 
+        for (uint16_t bit = 1<<(bits-1); bit; bit >>= 1) 
         {
             digitalWrite(wr, LOW);
-            if (d & _BV(i-1)) 
-            {
-                digitalWrite(data, HIGH);
-            } else 
-            {
-                digitalWrite(data, LOW);
-            }
+            digitalWrite(data, (d & bit) ? HIGH : LOW);
             digitalWrite(wr, HIGH);
         }
         pinMode(data, INPUT);
     }
     
     
-    void writeRAM(uint8_t addr, uint8_t data) {
-        //Serial.print("Writing 0x"); Serial.print(data&0xF, HEX);
-        //Serial.print(" to 0x"); Serial.println(addr & 0x7F, HEX);
-        
+    void writeRAM(uint8_t addr, uint8_t data)
+    {
+
         uint16_t d = HT1632_WRITE;
         d <<= 7;
         d |= addr & 0x7F;
@@ -446,20 +442,14 @@ public:
         writedata(d, 14);
         digitalWrite(cs, HIGH);
         
-        //writeSPIData(m_spi_fd, d, 14);
-    }
+     }
     
     
     void sendcommand(uint8_t cmd) 
     {
-        uint16_t data = 0;
-        data = HT1632_COMMAND;
-        data <<= 8;
-        data |= cmd;
-        data <<= 1;
         
         digitalWrite(cs, LOW);
-        writedata(data, 12);
+        writedata((((uint16_t)HT1632_COMMAND << 8) | cmd) << 1, 12);
         digitalWrite(cs, HIGH);
         
     }
@@ -467,9 +457,9 @@ public:
     
     void fillScreen() 
     {
-        for (uint8_t i=0; i<(width*height/8); i++) 
+        for (size_t i=0; i<leds.size(); i++) 
         {
-            ledmatrix[i] = 0xFF;
+            leds[i] = 0xFF;
         }
         writeScreen();
     }
@@ -487,13 +477,14 @@ public:
     int width;
     int height;
     uint8_t cursor_x, cursor_y, textsize, textcolor;
-    
+    int rotation = 0;
     
     LEDMatrix()
     {
         width = 0;
         height = 16;
-        
+        wiringPiSetupGpio();
+
     }
     
     void addPanel(uint8_t& data, uint8_t& wr, uint8_t& cs)
@@ -526,6 +517,26 @@ public:
     
     void drawPixel(uint8_t x, uint8_t y, uint8_t color) {
 
+        if((x < 0) || (x >= width) || (y < 0) || (y >= height)) return;
+        
+        
+        switch(rotation) 
+        { // Rotate pixel into device-specific coordinates
+        case 1:
+            _swap_int16_t(x, y);
+            x = width  - 1 - x;
+            break;
+        case 2:
+            x = width  - 1 - x;
+            y = height - 1 - y;
+            break;
+        case 3:
+            _swap_int16_t(x, y);
+            y = height - 1 - y;
+            break;
+        }
+
+        
         
         uint8_t m;
         // figure out which matrix controller it is
@@ -606,7 +617,7 @@ public:
         }
     }
     
-    void blink(boolean b) 
+    void blink(bool b) 
     {
         for (size_t i=0; i<panels.size(); i++) 
         {
